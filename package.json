@@ -2,7 +2,7 @@
   "name": "hollywood-di",
   "version": "0.1.0",
   "description": "📦 Type safe Dependency Injection for Typescript with zero decorators",
-  "private": "false",
+  "private": false,
   "main": "./dist/index.js",
   "module": "./dist/index.mjs",
   "types": "./dist/index.d.ts",
