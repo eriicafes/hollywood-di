@@ -154,7 +154,7 @@ export class Hollywood<
                 // recursively get constructor tag
                 const name = this.getConstructorTag(resolver as unknown as InstantiableConstructor<Instances<T, P>, any>)
                 // resolve token instance with name from constructor tag
-                if (name) this.resolve(name as unknown as Resolver<Hollywood<T, P>>)
+                if (name) return this.resolve(name as unknown as Resolver<Hollywood<T, P>>)
 
                 // constructor has not been tagged, create new instance without storing
                 // return this.initializeConstructor(resolver as unknown as InstantiableConstructor<Instances<T, P>, any>)
