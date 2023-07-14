@@ -1,5 +1,4 @@
-import { InitFn } from "./hollywood"
-
+type InitFn<TContainer, T> = (container: TContainer) => T
 type Constructor<T> = new (...args: any[]) => T
 type NArguments<N extends number> = readonly string[] & { length: N }
 type InitFnBuilder<T extends Constructor<any>> = {

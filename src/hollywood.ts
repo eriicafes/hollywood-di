@@ -3,19 +3,18 @@ import { scoped } from "./helpers"
 import { IsAny, KnownKey, KnownMappedKeys, Merge } from "./types/utils"
 
 // initializers
-export type InitFn<TContainer, T> = (container: TContainer) => T
-export type InitFactory<TContainer, T> = { init: InitFn<TContainer, T> }
+export type InitFactory<TContainer, T> = { init: (container: TContainer) => T }
 export type InitConstructor<TContainer, T> = (new () => T) & InitFactory<TContainer, T>
 export type ProxyConstructor<TContainer, T> = new (container: TContainer) => T
 export type InstantiableConstructor<TContainer, T> = ProxyConstructor<TContainer, T> | InitConstructor<TContainer, T>
 
 // tokens
 export type Scope = "singleton" | "scoped" | "transient"
-export type TokenConstructor<TContainer, T> = { scope: Scope, useClass: InstantiableConstructor<TContainer, T>, useFactory?: undefined }
-export type TokenFactory<TContainer, T> = { scope: Scope, useClass?: undefined, useFactory: (container: TContainer) => T }
-export type Token<TContainer, T> = TokenConstructor<TContainer, T> | TokenFactory<TContainer, T>
+export type ConstructorToken<TContainer, T> = { scope: Scope, type: "constructor", init: InstantiableConstructor<TContainer, T> }
+export type FactoryToken<TContainer, T> = { scope: Scope, type: "factory", init: (container: TContainer) => T }
+export type Token<TContainer, T> = ConstructorToken<TContainer, T> | FactoryToken<TContainer, T>
 export type RegisterToken<TContainer, T> = Token<TContainer, T> | InstantiableConstructor<TContainer, T>
-export type RegisterTokens<T extends Record<string, any>, P extends Record<string, any>> = {
+type RegisterTokens<T extends Record<string, any>, P extends Record<string, any>> = {
     [K in keyof T]: RegisterToken<{
         [Key in keyof Merge<KnownMappedKeys<T>, KnownMappedKeys<P>> as Exclude<Key, K>]: Merge<KnownMappedKeys<T>, KnownMappedKeys<P>>[Key]
     }, T[K]>
@@ -53,7 +52,7 @@ export class Hollywood<
     private readonly parent?: P
     private readonly instancesStore = new Map<string, any>()
     private readonly tokenStore = new Map<string, Token<Instances<T, P>, any>>()
-    private readonly constructorTags = new Map<InstantiableConstructor<Instances<T, P>, any>, string>()
+    private readonly tokenInitRefStore = new Map<Token<Instances<T, P>, any>["init"], string>()
     private readonly resolutionChain: string[] = []
     private readonly id: number
     private lastId = 0 // last issued id is tracked by the root container
@@ -93,8 +92,8 @@ export class Hollywood<
 
             this.tokenStore.set(name, token)
 
-            // tag constructor class with token name
-            if (token.useClass) this.constructorTags.set(token.useClass, name)
+            // tag non-transient token initializers reference
+            if (token.scope !== "transient") this.tokenInitRefStore.set(token.init, name)
         }
 
         // eagerly store token instances by resolving them once
@@ -144,26 +143,31 @@ export class Hollywood<
      */
     public resolve<R extends Resolver<Hollywood<T, P>>>(resolver: R): inferInstanceFromResolver<Hollywood<T, P>, R> {
         try {
-            // resolve init function
+            // resolve init factory
             if (typeof resolver === "object") {
+                // recursively get init ref tag
+                const name = this.getTokenInitRefTag(resolver.init)
+                // resolve token instance with name from init tag
+                if (name) return this.resolve(name as unknown as Resolver<Hollywood<T, P>>)
+
+                // create new instance with factory without storing
                 return resolver.init(this.instances as unknown as inferContainer<Hollywood<T, P>>)
             }
 
-            // resolve constructor by getting name from constructor tag
+            // resolve constructor by getting name from init tag
             if (typeof resolver !== "string") {
-                // recursively get constructor tag
-                const name = this.getConstructorTag(resolver as unknown as InstantiableConstructor<Instances<T, P>, any>)
-                // resolve token instance with name from constructor tag
+                // recursively get init ref tag
+                const name = this.getTokenInitRefTag(resolver)
+                // resolve token instance with name from init tag
                 if (name) return this.resolve(name as unknown as Resolver<Hollywood<T, P>>)
 
-                // constructor has not been tagged, create new instance without storing
-                // return this.initializeConstructor(resolver as unknown as InstantiableConstructor<Instances<T, P>, any>)
+                // create new instance with constructor without storing
                 return Hollywood.initConstructor(resolver, this.instances as unknown as inferContainer<Hollywood<T, P>>)
             }
 
             // check for stored instance in current container
-            const storedInstance = this.instancesStore.get(resolver) as Instances<T, P>[R & string] | undefined
-            if (storedInstance) return storedInstance
+            const hasStoredInstance = this.instancesStore.has(resolver)
+            if (hasStoredInstance) return this.instancesStore.get(resolver) as Instances<T, P>[R & string]
 
             // check for circular dependency error
             if (this.resolutionChain.includes(resolver)) throw new ResolutionError("CircularDependency", resolver)
@@ -192,15 +196,20 @@ export class Hollywood<
         if (token) {
             // if token is singleton check for instance in root container before creating
             // store singletons with their container depth so that singletons of same token name do not override those from other containers
+            let instance: Instances<T, P>[K]
 
-            const singletonInstance = token.scope === "singleton" ? this.root.instancesStore.get(name + `@${this.id}`) : undefined
-            const instance = singletonInstance ?? this.createTokenInstance(token)
+            if (token.scope === "singleton" && this.root.instancesStore.has(name + `@${this.id}`)) {
+                instance = this.root.instancesStore.get(name + `@${this.id}`)
+            }
+            else {
+                instance = token.type === "factory" ? token.init(this.instances) : Hollywood.initConstructor(token.init, this.instances)
+            }
 
             if (token.scope === "singleton") this.root.instancesStore.set(name + `@${this.id}`, instance)
             if (token.scope === "scoped") this.instancesStore.set(name, instance)
             // do not store transient
 
-            return instance as Instances<T, P>[K]
+            return instance
         }
 
         // check in parent container
@@ -208,24 +217,12 @@ export class Hollywood<
 
         throw new ResolutionError("UnregisteredToken", name)
     }
-    /**
-     * Create token instance either with factory or with constructor.
-     * @throws
-     */
-    private createTokenInstance<TInstance>(token: Token<Instances<T, P>, TInstance>): TInstance {
-        // initialize instance factory
-        if (token.useFactory) return token.useFactory(this.instances)
-        // initialize instance constructor
-        return Hollywood.initConstructor(token.useClass, this.instances)
-    }
 
-    private getConstructorTag(constructor: InstantiableConstructor<Instances<T, P>, any>): string | undefined {
-        const name = this.constructorTags.get(constructor)
-        if (name) return name
-
+    private getTokenInitRefTag(initRef: Token<Instances<T, P>, any>["init"]): string | undefined {
+        const name = this.tokenInitRefStore.get(initRef)
+        if (name !== undefined) return name
         // check in parent container
-        if (this.parent) return this.parent.getConstructorTag(constructor)
-
+        if (this.parent) return this.parent.getTokenInitRefTag(initRef)
         return undefined
     }
 
