@@ -10,11 +10,11 @@ export type InstantiableConstructor<TContainer, T> = ProxyConstructor<TContainer
 
 // tokens
 export type Scope = "singleton" | "scoped" | "transient"
-export type ConstructorToken<TContainer, T> = { scope: Scope, type: "constructor", init: InstantiableConstructor<TContainer, T> }
-export type FactoryToken<TContainer, T> = { scope: Scope, type: "factory", init: (container: TContainer) => T }
-export type Token<TContainer, T> = ConstructorToken<TContainer, T> | FactoryToken<TContainer, T>
+export type TokenConstructor<TContainer, T> = { scope: Scope, type: "constructor", init: InstantiableConstructor<TContainer, T> }
+export type TokenFactory<TContainer, T> = { scope: Scope, type: "factory", init: (container: TContainer) => T }
+export type Token<TContainer, T> = TokenConstructor<TContainer, T> | TokenFactory<TContainer, T>
 export type RegisterToken<TContainer, T> = Token<TContainer, T> | InstantiableConstructor<TContainer, T>
-type RegisterTokens<T extends Record<string, any>, P extends Record<string, any>> = {
+export type RegisterTokens<T extends Record<string, any>, P extends Record<string, any>> = {
     [K in keyof T]: RegisterToken<{
         [Key in keyof Merge<KnownMappedKeys<T>, KnownMappedKeys<P>> as Exclude<Key, K>]: Merge<KnownMappedKeys<T>, KnownMappedKeys<P>>[Key]
     }, T[K]>

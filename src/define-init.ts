@@ -1,11 +1,9 @@
-type InitFn<TContainer, T> = (container: TContainer) => T
 type Constructor<T> = new (...args: any[]) => T
 type NArguments<N extends number> = readonly string[] & { length: N }
 type InitFnBuilder<T extends Constructor<any>> = {
-    args<Args extends NArguments<ConstructorParameters<T>["length"]>>(...args: Args): InitFn<
-        { [K in Exclude<keyof Args, keyof any[]> as Args[K] & string]: K extends keyof ConstructorParameters<T> ? ConstructorParameters<T>[K] : never },
-        InstanceType<T>
-    >
+    args<Args extends NArguments<ConstructorParameters<T>["length"]>>(...args: Args): (container: {
+        [K in Exclude<keyof Args, keyof any[]> as Args[K] & string]: K extends keyof ConstructorParameters<T> ? ConstructorParameters<T>[K] : never
+    }) => InstanceType<T>
 }
 
 /**
