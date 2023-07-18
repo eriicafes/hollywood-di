@@ -1,5 +1,11 @@
 # hollywood-di
 
+## 0.2.1
+
+### Patch Changes
+
+- 41fe871: Expose `RegisterTokens` type
+
 ## 0.2.0
 
 ### Minor Changes
