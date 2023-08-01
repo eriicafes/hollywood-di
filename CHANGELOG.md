@@ -1,5 +1,11 @@
 # hollywood-di
 
+## 0.3.0
+
+### Minor Changes
+
+- 831ff9f: Drop support for ProxyConstructor
+
 ## 0.2.1
 
 ### Patch Changes
