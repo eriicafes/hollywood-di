@@ -4,9 +4,9 @@ import { IsAny, KnownKey, KnownMappedKeys, Merge } from "./types/utils"
 
 // initializers
 export type InitFactory<TContainer, T> = { init: (container: TContainer) => T }
-export type InitConstructor<TContainer, T> = (new () => T) & InitFactory<TContainer, T>
-export type ProxyConstructor<TContainer, T> = new (container: TContainer) => T
-export type InstantiableConstructor<TContainer, T> = ProxyConstructor<TContainer, T> | InitConstructor<TContainer, T>
+export type EmptyConstructor<T> = new () => T
+export type InitConstructor<TContainer, T> = (new (...args: any[]) => T) & InitFactory<TContainer, T>
+export type InstantiableConstructor<TContainer, T> = InitConstructor<TContainer, T> | EmptyConstructor<T>
 
 // tokens
 export type Scope = "singleton" | "scoped" | "transient"
@@ -143,19 +143,19 @@ export class Hollywood<
      */
     public resolve<R extends Resolver<Hollywood<T, P>>>(resolver: R): inferInstanceFromResolver<Hollywood<T, P>, R> {
         try {
-            // resolve init factory
-            if (typeof resolver === "object") {
-                // recursively get init ref tag
-                const name = this.getTokenInitRefTag(resolver.init)
-                // resolve token instance with name from init tag
-                if (name) return this.resolve(name as unknown as Resolver<Hollywood<T, P>>)
-
-                // create new instance with factory without storing
-                return resolver.init(this.instances as unknown as inferContainer<Hollywood<T, P>>)
-            }
-
-            // resolve constructor by getting name from init tag
+            // resolve init factory or constructor by getting name from init tag
             if (typeof resolver !== "string") {
+                // resolve init factory
+                if (typeof resolver === "object") {
+                    // recursively get init ref tag
+                    const name = this.getTokenInitRefTag(resolver.init)
+                    // resolve token instance with name from init tag
+                    if (name) return this.resolve(name as unknown as Resolver<Hollywood<T, P>>)
+
+                    // create new instance with factory without storing
+                    return resolver.init(this.instances as unknown as inferContainer<Hollywood<T, P>>)
+                }
+
                 // recursively get init ref tag
                 const name = this.getTokenInitRefTag(resolver)
                 // resolve token instance with name from init tag
@@ -200,8 +200,7 @@ export class Hollywood<
 
             if (token.scope === "singleton" && this.root.instancesStore.has(name + `@${this.id}`)) {
                 instance = this.root.instancesStore.get(name + `@${this.id}`)
-            }
-            else {
+            } else {
                 instance = token.type === "factory" ? token.init(this.instances) : Hollywood.initConstructor(token.init, this.instances)
             }
 
@@ -236,16 +235,12 @@ export class Hollywood<
     }
 
     /**
-     * Instantiate constructor using it's proxy constructor or static `init` method.
+     * Instantiate constructor using it's static `init` method.
      * 
      * This will throw an UnresolvedDependencyError when the `init` method tries to access a missing dependency from the container.
      * @throws
      */
     public static initConstructor<T, U>(constructor: InstantiableConstructor<T, U>, instances: T): U {
-        return Hollywood.isInitConstructor(constructor) ? constructor.init(instances) : new constructor(instances)
-    }
-
-    private static isInitConstructor<T, U>(constructor: InstantiableConstructor<T, U>): constructor is InitConstructor<T, U> {
-        return typeof (constructor as InitConstructor<T, U>).init === "function"
+        return "init" in constructor ? constructor.init(instances) : new constructor()
     }
 }

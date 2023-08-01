@@ -11,8 +11,12 @@ describe("Container", () => {
 
     class ForwardCounter {
         public counter: Counter
-        constructor(container: { counter: Counter }) {
-            this.counter = container.counter
+        constructor(counter: Counter) {
+            this.counter = counter
+        }
+
+        public static init(container: { counter: Counter }) {
+            return new ForwardCounter(container.counter)
         }
     }
 
