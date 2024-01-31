@@ -14,8 +14,7 @@
     }
   },
   "scripts": {
-    "prebuild": "shx rm -rf dist",
-    "build": "tsc --noEmit && tsup src/index.ts --format esm,cjs --dts",
+    "build": "tsc --noEmit && shx rm -rf dist && tsup src/index.ts --format esm,cjs --dts",
     "release": "pnpm run build && changeset publish",
     "watch": "vitest",
     "test": "vitest run"
@@ -41,7 +40,6 @@
   "homepage": "https://github.com/eriicafes/hollywood-di#readme",
   "devDependencies": {
     "@changesets/cli": "^2.26.2",
-    "@types/node": "^20.4.2",
     "shx": "^0.3.4",
     "tsup": "^7.1.0",
     "typescript": "^5.1.6",
