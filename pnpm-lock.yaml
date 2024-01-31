@@ -8,9 +8,6 @@ devDependencies:
   '@changesets/cli':
     specifier: ^2.26.2
     version: 2.26.2
-  '@types/node':
-    specifier: ^20.4.2
-    version: 20.4.2
   shx:
     specifier: ^0.3.4
     version: 0.3.4

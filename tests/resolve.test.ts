@@ -49,4 +49,31 @@ describe("Resolve", () => {
         const iCounterAlias = inferredContainer.resolve("counterAlias")
         expect(iCounter).toBe(iCounterAlias)
     })
+
+    it("should resolve token or constructor", () => {
+        const item = factory(() => ({ value: "🎁" } as const))
+
+        const parent = Hollywood.create({
+            // item: item,
+            counter: Counter,
+            other: factory(() => "other")
+        })
+
+        const child = parent.createChild({
+            item: factory(() => ({ value: "🗑️" } as const)),
+            counter: factory(() => "counter"),
+            another: factory(() => "another")
+        })
+
+        const parentItem = parent.resolve(item)
+        const childItem = child.resolve(item)
+        expect(childItem).toStrictEqual(parentItem)
+        expect(childItem).not.toBe(parentItem)
+        expect(childItem).not.toStrictEqual(child.instances.item)
+
+        const parentCounter = parent.resolve(Counter)
+        const childCounter = child.resolve(Counter)
+        expect(childCounter).toStrictEqual(parentCounter)
+        expect(childCounter).not.toBe(parentCounter)
+    })
 })

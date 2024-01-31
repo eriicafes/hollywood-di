@@ -1,6 +1,6 @@
 import { ResolutionError } from "./errors"
 import { scoped } from "./helpers"
-import { IsAny, KnownKey, KnownMappedKeys, Merge } from "./types/utils"
+import { IsAny, KnownMappedKeys, Merge } from "./types/utils"
 
 // initializers
 export type InitFactory<TContainer, T> = { init: (container: TContainer) => T }
@@ -14,32 +14,25 @@ export type TokenConstructor<TContainer, T> = { scope: Scope, type: "constructor
 export type TokenFactory<TContainer, T> = { scope: Scope, type: "factory", init: (container: TContainer) => T }
 export type Token<TContainer, T> = TokenConstructor<TContainer, T> | TokenFactory<TContainer, T>
 export type RegisterToken<TContainer, T> = Token<TContainer, T> | InstantiableConstructor<TContainer, T>
-export type RegisterTokens<T extends Record<string, any>, P extends Record<string, any>> = {
-    [K in keyof T]: RegisterToken<{
-        [Key in keyof Merge<KnownMappedKeys<T>, KnownMappedKeys<P>> as Exclude<Key, K>]: Merge<KnownMappedKeys<T>, KnownMappedKeys<P>>[Key]
-    }, T[K]>
+export type RegisterTokens<TContainer extends Record<string, any>, PContainer extends Record<string, any>> = {
+    [K in keyof TContainer]: Merge<TContainer, PContainer> extends infer U extends Record<string, any> ? RegisterToken<KnownMappedKeys<Omit<U, K>>, TContainer[K]> : never
 }
 
+// infer
+export type InferContainer<T extends AnyHollywood> = T extends Hollywood<infer TContainer, infer P>
+    ? P extends AnyHollywood
+    ? IsAny<P> extends true ? never : KnownMappedKeys<Merge<TContainer, InferContainer<P>>>
+    : TContainer
+    : never
+
 // resolver
-export type Resolver<C extends AnyHollywood | undefined> = (keyof inferContainer<C> & string) | InstantiableConstructor<inferContainer<C>, any> | InitFactory<inferContainer<C>, any>
-type inferInstanceFromResolver<C extends AnyHollywood | undefined, R extends Resolver<C>> = R extends InstantiableConstructor<infer _, infer T>
+export type Resolver<T extends AnyHollywood> = (keyof InferContainer<T> & string) | InstantiableConstructor<InferContainer<T>, any> | InitFactory<InferContainer<T>, any>
+type inferInstanceFromResolver<T extends AnyHollywood, R extends Resolver<T>> = R extends InstantiableConstructor<infer _, infer T>
     ? T
     : R extends InitFactory<infer _, infer T>
     ? T
-    : R extends keyof inferContainer<C>
-    ? inferContainer<C>[R]
-    : never
-
-// instances
-type ExtractContainer<C extends AnyHollywood> = C extends Hollywood<infer T, infer P>
-    ? P extends AnyHollywood
-    ? IsAny<P> extends true ? never : Merge<KnownMappedKeys<T>, ExtractContainer<P>>
-    : T
-    : never
-
-type Instances<T extends Record<string, any>, P extends AnyHollywood | undefined> = Merge<T, P extends AnyHollywood ? ExtractContainer<P> : never>
-export type inferContainer<T extends AnyHollywood | undefined> = T extends Hollywood<infer TContainer, infer P>
-    ? { [K in keyof Instances<KnownMappedKeys<TContainer>, P> as KnownKey<K> & string]: Instances<KnownMappedKeys<TContainer>, P>[K] }
+    : R extends keyof InferContainer<T>
+    ? InferContainer<T>[R]
     : never
 
 export type AnyHollywood = Hollywood<any, any>
@@ -51,15 +44,16 @@ export class Hollywood<
     private readonly root: AnyHollywood
     private readonly parent?: P
     private readonly instancesStore = new Map<string, any>()
-    private readonly tokenStore = new Map<string, Token<Instances<T, P>, any>>()
-    private readonly tokenInitRefStore = new Map<Token<Instances<T, P>, any>["init"], string>()
+    private readonly singletonInstancesStore = new Map<`${string}@${number}`, any>()
+    private readonly tokenStore = new Map<Extract<Resolver<this>, string>, Token<InferContainer<this>, any>>()
+    private readonly tokenInitNameStore = new Map<Token<InferContainer<this>, any>["init"], string>()
     private readonly resolutionChain: string[] = []
     private readonly id: number
     private lastId = 0 // last issued id is tracked by the root container
 
-    public readonly instances: Instances<T, P> = new Proxy({} as Instances<T, P>, {
+    public readonly instances: InferContainer<this> = new Proxy({} as InferContainer<this>, {
         get: (_, prop) => {
-            return this.resolve(prop as unknown as Resolver<Hollywood<T, P>>)
+            return this.resolve(prop as Resolver<this>)
         },
         ownKeys: () => {
             const tokens = this.getAllTokens()
@@ -73,7 +67,7 @@ export class Hollywood<
         },
     })
 
-    private constructor(tokens: RegisterTokens<T, inferContainer<P>>, parent: P) {
+    private constructor(tokens: RegisterTokens<T, P extends AnyHollywood ? InferContainer<P> : never>, parent: P) {
         // set container parent and root
         if (parent) {
             this.parent = parent
@@ -86,19 +80,19 @@ export class Hollywood<
         this.id = this.root.lastId++
 
         // register tokens
-        for (const [name, registerToken] of Object.entries(tokens) as [string, RegisterToken<Instances<T, P>, any>][]) {
-            // if constructor is provided, register as scoped
+        for (const [name, registerToken] of Object.entries(tokens) as [Extract<Resolver<this>, string>, RegisterToken<InferContainer<this>, any>][]) {
+            // if constructor is provided, register as scoped token
             const token = typeof registerToken === "function" ? scoped(registerToken) : registerToken
 
             this.tokenStore.set(name, token)
 
-            // tag non-transient token initializers reference
-            if (token.scope !== "transient") this.tokenInitRefStore.set(token.init, name)
+            // tag non-transient token initializers
+            if (token.scope !== "transient") this.tokenInitNameStore.set(token.init, name)
         }
 
         // eagerly store token instances by resolving them once
         for (const [name, token] of this.tokenStore.entries()) {
-            if (token.scope !== "transient") this.resolve(name as unknown as Resolver<Hollywood<T, P>>)
+            if (token.scope !== "transient") this.resolve(name)
         }
     }
 
@@ -115,7 +109,7 @@ export class Hollywood<
      * @param parent parent DI Container.
      * @param tokens registration tokens.
      */
-    public static createWithParent<T extends Record<string, any>, P extends AnyHollywood>(parent: P, tokens: RegisterTokens<T, inferContainer<P>>): Hollywood<T, P> {
+    public static createWithParent<T extends Record<string, any>, P extends AnyHollywood>(parent: P, tokens: RegisterTokens<T, InferContainer<P>>): Hollywood<T, P> {
         return new Hollywood(tokens, parent)
     }
 
@@ -127,7 +121,7 @@ export class Hollywood<
      * NOTE: `scoped` instances will be scoped to the child container only.
      * @param tokens registration tokens.
      */
-    public createChild<TContainer extends Record<string, any>>(tokens: RegisterTokens<TContainer, inferContainer<this>>): Hollywood<TContainer, this> {
+    public createChild<TContainer extends Record<string, any>>(tokens: RegisterTokens<TContainer, InferContainer<this>>): Hollywood<TContainer, this> {
         return Hollywood.createWithParent(this, tokens)
     }
 
@@ -141,40 +135,37 @@ export class Hollywood<
      * 
      * A class resolver must either have an empty constructor or must have a static `init` method to instantiate itself.
      */
-    public resolve<R extends Resolver<Hollywood<T, P>>>(resolver: R): inferInstanceFromResolver<Hollywood<T, P>, R> {
+    public resolve<R extends Resolver<this>>(resolver: R): inferInstanceFromResolver<this, R> {
         try {
-            // resolve init factory or constructor by getting name from init tag
+            // resolve init factory or constructor
             if (typeof resolver !== "string") {
-                // resolve init factory
-                if (typeof resolver === "object") {
-                    // recursively get init ref tag
-                    const name = this.getTokenInitRefTag(resolver.init)
-                    // resolve token instance with name from init tag
-                    if (name) return this.resolve(name as unknown as Resolver<Hollywood<T, P>>)
-
-                    // create new instance with factory without storing
-                    return resolver.init(this.instances as unknown as inferContainer<Hollywood<T, P>>)
+                // resolve token instance with name if reference exists in this container
+                let name: string | undefined = undefined
+                if (typeof resolver === "function") {
+                    // get init name tag from constructor
+                    name = this.tokenInitNameStore.get(resolver)
+                } else {
+                    // get init name tag from factory
+                    name = this.tokenInitNameStore.get(resolver.init)
                 }
-
-                // recursively get init ref tag
-                const name = this.getTokenInitRefTag(resolver)
-                // resolve token instance with name from init tag
-                if (name) return this.resolve(name as unknown as Resolver<Hollywood<T, P>>)
-
-                // create new instance with constructor without storing
-                return Hollywood.initConstructor(resolver, this.instances as unknown as inferContainer<Hollywood<T, P>>)
+                if (name) return this.resolve(name as R)
+                // else create new instance without storing
+                return Hollywood.init(resolver, this.instances)
             }
 
             // check for stored instance in current container
+            // check for existence first using has to cover situations where the stored instance is actually undefined
             const hasStoredInstance = this.instancesStore.has(resolver)
-            if (hasStoredInstance) return this.instancesStore.get(resolver) as Instances<T, P>[R & string]
+            if (hasStoredInstance) return this.instancesStore.get(resolver)
 
             // check for circular dependency error
             if (this.resolutionChain.includes(resolver)) throw new ResolutionError("CircularDependency", resolver)
             this.resolutionChain.push(resolver) // add to resolution chain
 
-            // if no stored instance get new token instance and store it where appropriate
-            const instance = this.getAndStoreTokenInstance(resolver)
+            // if no stored instance get new token instance
+            const [instance, scope] = this.getTokenInstance(resolver as Extract<R, string>)
+            // store scoped instances in the original resolving container
+            if (scope === "scoped") this.instancesStore.set(resolver, instance)
 
             this.resolutionChain.pop() // remove from resolution chain only after getting instance
             return instance
@@ -191,38 +182,27 @@ export class Hollywood<
         }
     }
 
-    private getAndStoreTokenInstance<K extends keyof Instances<T, P> & string>(name: K): Instances<T, P>[K] {
+    private getTokenInstance<K extends Extract<Resolver<this>, string>>(name: K): [InferContainer<this>[K], Scope] {
         const token = this.tokenStore.get(name)
-        if (token) {
-            // if token is singleton check for instance in root container before creating
-            // store singletons with their container depth so that singletons of same token name do not override those from other containers
-            let instance: Instances<T, P>[K]
-
-            if (token.scope === "singleton" && this.root.instancesStore.has(name + `@${this.id}`)) {
-                instance = this.root.instancesStore.get(name + `@${this.id}`)
-            } else {
-                instance = token.type === "factory" ? token.init(this.instances) : Hollywood.initConstructor(token.init, this.instances)
-            }
-
-            if (token.scope === "singleton") this.root.instancesStore.set(name + `@${this.id}`, instance)
-            if (token.scope === "scoped") this.instancesStore.set(name, instance)
-            // do not store transient
-
-            return instance
+        if (!token) {
+            // check in parent container
+            if (this.parent) return this.parent.getTokenInstance(name)
+            throw new ResolutionError("UnregisteredToken", name)
         }
 
-        // check in parent container
-        if (this.parent) return this.parent.getAndStoreTokenInstance(name)
+        // if token is singleton check for instance in root container before creating
+        // store singletons with their container depth so that singletons of same token name do not override those from other containers
+        if (token.scope === "singleton") {
+            const exists = this.root.singletonInstancesStore.has(`${name}@${this.id}`)
+            if (!exists) {
+                const instance = token.type === "constructor" ? Hollywood.init(token.init, this.instances) : Hollywood.init(token, this.instances)
+                this.root.singletonInstancesStore.set(`${name}@${this.id}`, instance)
+            }
+            return [this.root.singletonInstancesStore.get(`${name}@${this.id}`), token.scope]
+        }
 
-        throw new ResolutionError("UnregisteredToken", name)
-    }
-
-    private getTokenInitRefTag(initRef: Token<Instances<T, P>, any>["init"]): string | undefined {
-        const name = this.tokenInitRefStore.get(initRef)
-        if (name !== undefined) return name
-        // check in parent container
-        if (this.parent) return this.parent.getTokenInitRefTag(initRef)
-        return undefined
+        const instance = token.type === "constructor" ? Hollywood.init(token.init, this.instances) : Hollywood.init(token, this.instances)
+        return [instance, token.scope]
     }
 
     /**
@@ -235,12 +215,10 @@ export class Hollywood<
     }
 
     /**
-     * Instantiate constructor using it's static `init` method.
-     * 
-     * This will throw an UnresolvedDependencyError when the `init` method tries to access a missing dependency from the container.
-     * @throws
+     * Instantiate a token or constructor.
      */
-    public static initConstructor<T, U>(constructor: InstantiableConstructor<T, U>, instances: T): U {
-        return "init" in constructor ? constructor.init(instances) : new constructor()
+    public static init<T, U>(token: InstantiableConstructor<T, U> | InitFactory<T, U>, instances: T): U {
+        if (typeof token !== "function") return token.init(instances)
+        return "init" in token ? token.init(instances) : new token()
     }
 }
