@@ -17,7 +17,8 @@
     "build": "tsc --noEmit && shx rm -rf dist && tsup src/index.ts --format esm,cjs --dts",
     "release": "pnpm run build && changeset publish",
     "watch": "vitest",
-    "test": "vitest run"
+    "test": "vitest run",
+    "test:coverage": "vitest run --coverage"
   },
   "keywords": [
     "Hollywood",
@@ -40,9 +41,10 @@
   "homepage": "https://github.com/eriicafes/hollywood-di#readme",
   "devDependencies": {
     "@changesets/cli": "^2.26.2",
+    "@vitest/coverage-v8": "^1.2.2",
     "shx": "^0.3.4",
     "tsup": "^7.1.0",
     "typescript": "^5.1.6",
-    "vitest": "^0.33.0"
+    "vitest": "^1.2.2"
   }
 }
