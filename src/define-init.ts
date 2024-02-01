@@ -7,9 +7,23 @@ type InitFnBuilder<T extends Constructor<any>> = {
 }
 
 /**
- * Define `init` function for a class.
+ * Define `init` function for a class by mapping each constructor parameter to a token from the container.
  * 
- * Maps each constructor parameter to a token from the DI Container.
+ * @example
+ * class Service {
+ *     public static init = defineInit(Service).args("dep")
+ * 
+ *     constructor(dep: Dep) {}
+ * }
+ * 
+ * // equivalent to
+ * class Service {
+ *     public static init(container: { dep: Dep }) {
+ *         return new Service(container.dep)
+ *     }
+ * 
+ *     constructor(dep: Dep) {}
+ * }
  */
 export function defineInit<T extends Constructor<any>>(constructor: T): InitFnBuilder<T> {
     return {

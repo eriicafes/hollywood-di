@@ -8,10 +8,20 @@ export type EmptyConstructor<T> = new () => T
 export type InitConstructor<TContainer, T> = (new (...args: any[]) => T) & InitFactory<TContainer, T>
 export type InstantiableConstructor<TContainer, T> = InitConstructor<TContainer, T> | EmptyConstructor<T>
 
+// options
+export type TokenOptions<T> = {
+    lazy?: boolean
+    beforeInit?: () => void
+    afterInit?: (instance: T) => void
+}
+export type ContainerOptions = {
+    lazy?: boolean
+}
+
 // tokens
 export type Scope = "singleton" | "scoped" | "transient"
-export type TokenConstructor<TContainer, T> = { scope: Scope, type: "constructor", init: InstantiableConstructor<TContainer, T> }
-export type TokenFactory<TContainer, T> = { scope: Scope, type: "factory", init: (container: TContainer) => T }
+export type TokenConstructor<TContainer, T> = TokenOptions<T> & { scope: Scope, type: "constructor", init: InstantiableConstructor<TContainer, T> }
+export type TokenFactory<TContainer, T> = TokenOptions<T> & { scope: Scope, type: "factory", init: (container: TContainer) => T }
 export type Token<TContainer, T> = TokenConstructor<TContainer, T> | TokenFactory<TContainer, T>
 export type RegisterToken<TContainer, T> = Token<TContainer, T> | InstantiableConstructor<TContainer, T>
 export type RegisterTokens<TContainer extends Record<string, any>, PContainer extends Record<string, any>> = {
@@ -21,7 +31,7 @@ export type RegisterTokens<TContainer extends Record<string, any>, PContainer ex
 // infer
 export type InferContainer<T extends AnyHollywood> = T extends Hollywood<infer TContainer, infer P>
     ? P extends AnyHollywood
-    ? IsAny<P> extends true ? never : KnownMappedKeys<Merge<TContainer, InferContainer<P>>>
+    ? IsAny<P> extends true ? never : KnownMappedKeys<Merge<KnownMappedKeys<TContainer>, InferContainer<P>>>
     : TContainer
     : never
 
@@ -41,6 +51,7 @@ export class Hollywood<
     T extends Record<string, any>,
     P extends AnyHollywood | undefined = undefined,
 > {
+    private readonly options?: ContainerOptions
     private readonly root: AnyHollywood
     private readonly parent?: P
     private readonly instancesStore = new Map<string, any>()
@@ -67,7 +78,8 @@ export class Hollywood<
         },
     })
 
-    private constructor(tokens: RegisterTokens<T, P extends AnyHollywood ? InferContainer<P> : never>, parent: P) {
+    private constructor(tokens: RegisterTokens<T, P extends AnyHollywood ? InferContainer<P> : never>, parent: P, options?: ContainerOptions) {
+        this.options = options
         // set container parent and root
         if (parent) {
             this.parent = parent
@@ -92,48 +104,47 @@ export class Hollywood<
 
         // eagerly store token instances by resolving them once
         for (const [name, token] of this.tokenStore.entries()) {
-            if (token.scope !== "transient") this.resolve(name)
+            if (token.scope !== "transient" && !(token.lazy ?? this.options?.lazy)) this.resolve(name)
         }
     }
 
     /**
-     * Create root DI Container.
+     * Create root container.
      * @param tokens registration tokens.
      */
-    public static create<T extends Record<string, any>>(tokens: RegisterTokens<T, {}>): Hollywood<T> {
-        return new Hollywood(tokens, undefined)
+    public static create<T extends Record<string, any> = {}>(tokens: RegisterTokens<T, {}>, options?: ContainerOptions): Hollywood<T> {
+        return new Hollywood(tokens, undefined, options)
     }
 
     /**
-     * Create child DI Container.
-     * @param parent parent DI Container.
+     * Create child container from a parent container.
+     * @param parent parent container.
      * @param tokens registration tokens.
      */
-    public static createWithParent<T extends Record<string, any>, P extends AnyHollywood>(parent: P, tokens: RegisterTokens<T, InferContainer<P>>): Hollywood<T, P> {
-        return new Hollywood(tokens, parent)
+    public static createWithParent<T extends Record<string, any> = {}, P extends AnyHollywood = AnyHollywood>(parent: P, tokens: RegisterTokens<T, InferContainer<P>>, options?: ContainerOptions): Hollywood<T, P> {
+        return new Hollywood(tokens, parent, options ?? parent.options)
     }
 
     /**
-     * Create child container from this container.
+     * Create child container.
      * 
      * Child container will be able to resolve all tokens it's parent container can resolve.
-     * 
-     * NOTE: `scoped` instances will be scoped to the child container only.
      * @param tokens registration tokens.
      */
-    public createChild<TContainer extends Record<string, any>>(tokens: RegisterTokens<TContainer, InferContainer<this>>): Hollywood<TContainer, this> {
-        return Hollywood.createWithParent(this, tokens)
+    public createChild<TContainer extends Record<string, any> = {}>(tokens: RegisterTokens<TContainer, InferContainer<this>>, options?: ContainerOptions): Hollywood<TContainer, this> {
+        return Hollywood.createWithParent(this, tokens, options)
     }
 
     /**
-     * Resolve token instance by name or class.
+     * Resolve token instance by name, class constructor or factory function.
      * 
-     * This will return the instance of the token from the current container.
-     * If a token was not registered directly on this container it will recursively use constructors or factories from it's parent container.
+     * `scoped`: A unique instance scoped to the resolving container will be returned when resolving a scoped token.
      * 
-     * NOTE: `singletons` are stored in the root container only and for `transients` new instances are created everytime.
+     * `singleton`: A single shared instance will be returned when resolving a singleton token.
      * 
-     * A class resolver must either have an empty constructor or must have a static `init` method to instantiate itself.
+     * `transient`: A new instance will be returned everytime when resolving a transient token (even in the same container).
+     * 
+     * When creating an instance, if the token was not registered directly on this container it will use initializers from it's parent container to create the new instance.
      */
     public resolve<R extends Resolver<this>>(resolver: R): inferInstanceFromResolver<this, R> {
         try {
@@ -195,19 +206,20 @@ export class Hollywood<
         if (token.scope === "singleton") {
             const exists = this.root.singletonInstancesStore.has(`${name}@${this.id}`)
             if (!exists) {
+                token.beforeInit?.()
                 const instance = token.type === "constructor" ? Hollywood.init(token.init, this.instances) : Hollywood.init(token, this.instances)
+                token.afterInit?.(instance)
                 this.root.singletonInstancesStore.set(`${name}@${this.id}`, instance)
             }
             return [this.root.singletonInstancesStore.get(`${name}@${this.id}`), token.scope]
         }
 
+        token.beforeInit?.()
         const instance = token.type === "constructor" ? Hollywood.init(token.init, this.instances) : Hollywood.init(token, this.instances)
+        token.afterInit?.(instance)
         return [instance, token.scope]
     }
 
-    /**
-     * Recursively get all token names stored in this container and it's parent.
-     */
     private getAllTokens(acc?: Set<string>): Set<string> {
         const keys = new Set([...(acc ?? []), ...this.tokenStore.keys()])
         if (!this.parent) return keys
