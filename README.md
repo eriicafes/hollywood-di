@@ -150,8 +150,8 @@ class Waiter {
 }
 
 class Restaurant {
-  public static init(ctx: { chef: Chef; waiter: Waiter }) {
-    return new Restaurant(ctx.chef, ctx.waiter);
+  public static init(container: { chef: Chef; waiter: Waiter }) {
+    return new Restaurant(container.chef, container.waiter);
   }
 
   constructor(private chef: Chef, private waiter: Waiter) {}
@@ -176,7 +176,7 @@ In the example above, the container automatically injects the chef and waiter to
 
 ### Define Init (class helper)
 
-In the previous example, the kitchen initializer can be simplified as below:
+In the previous example, the restaurant initializer can be simplified as below:
 
 ```ts
 import { defineInit } from "hollywood-di";
@@ -248,6 +248,26 @@ type Scope = "singleton" | "scoped" | "transient";
 - `Singleton`: a single instance is shared across all containers.
 
 - `Transient`: a new instance is created everytime.
+
+```ts
+class Instance {}
+
+const container Hollywood.create({
+    // scoped
+    example: Instance, // scoped by default ie same as scoped(Instance)
+    exampleScoped: scoped(Instance),
+    exampleScopedFactory: scopedFactory(() => new Instance()),
+
+    // singleton
+    exampleSingleton: singleton(Instance),
+    exampleSingletonFactory: scoped(() => new Instance()),
+
+    // transient
+    exampleTransient: transient(Instance),
+    exampleTransientfactory: transientFactory(() => new Instance()),
+
+})
+```
 
 ## Examples
 
