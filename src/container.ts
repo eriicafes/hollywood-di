@@ -50,7 +50,14 @@ type InferInstanceFromResolver<T extends Record<string, any>, R extends Resolver
     ? T[R]
     : never
 
+/**
+ * Any container.
+ */
 export type AnyHollywood = Hollywood<any, any>
+/**
+ * Any container that can resolve T.
+ */
+export type HollywoodOf<T extends Record<string, any>> = Hollywood<T, any>
 
 export class Hollywood<
     T extends Record<string, any>,
