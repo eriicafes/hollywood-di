@@ -1,5 +1,11 @@
 # hollywood-di
 
+## 0.4.0
+
+### Minor Changes
+
+- bef4575: Child container can now be assigned to a type of it's parent container as long as it does not override the parent structure
+
 ## 0.3.1
 
 ### Patch Changes
