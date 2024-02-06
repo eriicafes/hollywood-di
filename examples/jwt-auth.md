@@ -38,7 +38,7 @@ interface IUserService {
 ```
 
 In the snippet below, the UserService implementation depends on a IDatabaseService while the AuthService depends on both an IUserService and IJWTService.
-Each of their init function correctly specifies then name of the dependency and the container automatically instantiates them.
+Each of their init function specifies their dependencies and the container automatically instantiates them.
 
 NOTE: You would have typescript errors if your container fails to provide all required dependencies.
 

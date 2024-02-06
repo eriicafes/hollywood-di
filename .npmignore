@@ -3,6 +3,8 @@
 .vscode
 src
 tests
+examples
 pnpm-lock.yaml
 tsconfig.json
-vitest.config.ts
+vitest.config.mts
+CHANGELOG.md
