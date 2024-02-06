@@ -4,7 +4,7 @@ export default defineConfig({
     test: {
         coverage: {
             exclude: [
-                "src/types/**"
+                "src/types.ts"
             ]
         }
     },

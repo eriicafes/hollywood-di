@@ -268,7 +268,3 @@ const container Hollywood.create({
 
 })
 ```
-
-## Examples
-
-[JWT Auth](./examples/jwt-auth.md)
