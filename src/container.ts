@@ -1,9 +1,9 @@
 import { ResolutionError } from "./errors"
 import { scoped } from "./helpers"
-import { IsAny, KnownMappedKeys, Merge } from "./types/utils"
+import { KnownMappedKeys, Merge } from "./types"
 
 // initializers
-export type InitFactory<TContainer, T> = { init: (container: TContainer) => T }
+export type InitFactory<TContainer, T> = { init(container: TContainer): T }
 export type EmptyConstructor<T> = new () => T
 export type InitConstructor<TContainer, T> = (new (...args: any[]) => T) & InitFactory<TContainer, T>
 export type InstantiableConstructor<TContainer, T> = InitConstructor<TContainer, T> | EmptyConstructor<T>
@@ -25,46 +25,44 @@ export type TokenFactory<TContainer, T> = TokenOptions<T> & { scope: Scope, type
 export type Token<TContainer, T> = TokenConstructor<TContainer, T> | TokenFactory<TContainer, T>
 export type RegisterToken<TContainer, T> = Token<TContainer, T> | InstantiableConstructor<TContainer, T>
 export type RegisterTokens<TContainer extends Record<string, any>, PContainer extends Record<string, any>> = {
-    [K in keyof TContainer]: Merge<TContainer, PContainer> extends infer U extends Record<string, any> ? RegisterToken<KnownMappedKeys<Omit<U, K>>, TContainer[K]> : never
+    [K in keyof TContainer]: RegisterToken<KnownMappedKeys<Omit<Merge<TContainer, PContainer>, K>>, TContainer[K]>
 }
 
 // infer
-export type InferContainer<T extends AnyHollywood> = T extends Hollywood<infer TContainer, infer P>
-    ? P extends AnyHollywood
-    ? IsAny<P> extends true ? never : KnownMappedKeys<Merge<KnownMappedKeys<TContainer>, InferContainer<P>>>
-    : TContainer
+export type InferContainer<T extends AnyHollywood> = T extends Hollywood<infer TContainer, infer PContainer>
+    ? Merge<TContainer, PContainer>
     : never
 
 // resolver
-export type Resolver<T extends AnyHollywood> = (keyof InferContainer<T> & string) | InstantiableConstructor<InferContainer<T>, any> | InitFactory<InferContainer<T>, any>
-type inferInstanceFromResolver<T extends AnyHollywood, R extends Resolver<T>> = R extends InstantiableConstructor<infer _, infer T>
+export type Resolver<T extends Record<string, any>> = (keyof T & string) | InstantiableConstructor<T, any> | InitFactory<T, any>
+type InferInstanceFromResolver<T extends Record<string, any>, R extends Resolver<T>> = R extends InstantiableConstructor<infer _, infer T>
     ? T
     : R extends InitFactory<infer _, infer T>
     ? T
-    : R extends keyof InferContainer<T>
-    ? InferContainer<T>[R]
+    : R extends keyof T
+    ? T[R]
     : never
 
 export type AnyHollywood = Hollywood<any, any>
 
 export class Hollywood<
     T extends Record<string, any>,
-    P extends AnyHollywood | undefined = undefined,
+    P extends Record<string, any>,
 > {
     private readonly options?: ContainerOptions
     private readonly root: AnyHollywood
-    private readonly parent?: P
+    private readonly parent?: AnyHollywood
     private readonly instancesStore = new Map<string, any>()
     private readonly singletonInstancesStore = new Map<`${string}@${number}`, any>()
-    private readonly tokenStore = new Map<Extract<Resolver<this>, string>, Token<InferContainer<this>, any>>()
-    private readonly tokenInitNameStore = new Map<Token<InferContainer<this>, any>["init"], string>()
+    private readonly tokenStore = new Map<string, Token<any, any>>()
+    private readonly tokenInitNameStore = new Map<Token<any, any>["init"], string>()
     private readonly resolutionChain: string[] = []
     private readonly id: number
     private lastId = 0 // last issued id is tracked by the root container
 
-    public readonly instances: InferContainer<this> = new Proxy({} as InferContainer<this>, {
+    public readonly instances: Merge<T, P> = new Proxy({} as Merge<T, P>, {
         get: (_, prop) => {
-            return this.resolve(prop as Resolver<this>)
+            return this.resolve(prop as Resolver<Merge<T, P>>)
         },
         ownKeys: () => {
             const tokens = this.getAllTokens()
@@ -78,7 +76,7 @@ export class Hollywood<
         },
     })
 
-    private constructor(tokens: RegisterTokens<T, P extends AnyHollywood ? InferContainer<P> : never>, parent: P, options?: ContainerOptions) {
+    private constructor(tokens: RegisterTokens<T, P>, parent: Hollywood<P, any> | undefined, options?: ContainerOptions) {
         this.options = options
         // set container parent and root
         if (parent) {
@@ -92,7 +90,7 @@ export class Hollywood<
         this.id = this.root.lastId++
 
         // register tokens
-        for (const [name, registerToken] of Object.entries(tokens) as [Extract<Resolver<this>, string>, RegisterToken<InferContainer<this>, any>][]) {
+        for (const [name, registerToken] of Object.entries(tokens) as [Extract<Resolver<this>, string>, RegisterToken<Merge<T, P>, any>][]) {
             // if constructor is provided, register as scoped token
             const token = typeof registerToken === "function" ? scoped(registerToken) : registerToken
 
@@ -112,7 +110,7 @@ export class Hollywood<
      * Create root container.
      * @param tokens registration tokens.
      */
-    public static create<T extends Record<string, any> = {}>(tokens: RegisterTokens<T, {}>, options?: ContainerOptions): Hollywood<T> {
+    public static create<T extends Record<string, any> = {}>(tokens: RegisterTokens<T, {}>, options?: ContainerOptions): Hollywood<T, {}> {
         return new Hollywood(tokens, undefined, options)
     }
 
@@ -121,7 +119,7 @@ export class Hollywood<
      * @param parent parent container.
      * @param tokens registration tokens.
      */
-    public static createWithParent<T extends Record<string, any> = {}, P extends AnyHollywood = AnyHollywood>(parent: P, tokens: RegisterTokens<T, InferContainer<P>>, options?: ContainerOptions): Hollywood<T, P> {
+    public static createWithParent<T extends Record<string, any> = {}, P extends AnyHollywood = AnyHollywood>(parent: P, tokens: RegisterTokens<T, InferContainer<P>>, options?: ContainerOptions): Hollywood<T, InferContainer<P>> {
         return new Hollywood(tokens, parent, options ?? parent.options)
     }
 
@@ -131,7 +129,7 @@ export class Hollywood<
      * Child container will be able to resolve all tokens it's parent container can resolve.
      * @param tokens registration tokens.
      */
-    public createChild<TContainer extends Record<string, any> = {}>(tokens: RegisterTokens<TContainer, InferContainer<this>>, options?: ContainerOptions): Hollywood<TContainer, this> {
+    public createChild<TContainer extends Record<string, any> = {}>(tokens: RegisterTokens<TContainer, InferContainer<this>>, options?: ContainerOptions): Hollywood<TContainer, InferContainer<this>> {
         return Hollywood.createWithParent(this, tokens, options)
     }
 
@@ -146,7 +144,7 @@ export class Hollywood<
      * 
      * When creating an instance, if the token was not registered directly on this container it will use initializers from it's parent container to create the new instance.
      */
-    public resolve<R extends Resolver<this>>(resolver: R): inferInstanceFromResolver<this, R> {
+    public resolve<R extends Resolver<Merge<T, P>>>(resolver: R): InferInstanceFromResolver<Merge<T, P>, R> {
         try {
             // resolve init factory or constructor
             if (typeof resolver !== "string") {
@@ -193,7 +191,7 @@ export class Hollywood<
         }
     }
 
-    private getTokenInstance<K extends Extract<Resolver<this>, string>>(name: K): [InferContainer<this>[K], Scope] {
+    private getTokenInstance<K extends keyof Merge<T, P> & string>(name: K): [any, Scope] {
         const token = this.tokenStore.get(name)
         if (!token) {
             // check in parent container

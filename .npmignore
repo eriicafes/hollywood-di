@@ -3,7 +3,6 @@
 .vscode
 src
 tests
-examples
 pnpm-lock.yaml
 tsconfig.json
 vitest.config.mts
