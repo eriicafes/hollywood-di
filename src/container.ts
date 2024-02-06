@@ -1,11 +1,11 @@
 import { ResolutionError } from "./errors"
 import { scoped } from "./helpers"
-import { KnownMappedKeys, Merge } from "./types"
+import { HasIndexSignature, KnownMappedKeys, Merge, Pretty } from "./types"
 
 // initializers
 export type InitFactory<TContainer, T> = { init(container: TContainer): T }
-export type EmptyConstructor<T> = new () => T
-export type InitConstructor<TContainer, T> = (new (...args: any[]) => T) & InitFactory<TContainer, T>
+type EmptyConstructor<T> = new () => T
+type InitConstructor<TContainer, T> = (new (...args: any[]) => T) & InitFactory<TContainer, T>
 export type InstantiableConstructor<TContainer, T> = InitConstructor<TContainer, T> | EmptyConstructor<T>
 
 // options
@@ -25,7 +25,14 @@ export type TokenFactory<TContainer, T> = TokenOptions<T> & { scope: Scope, type
 export type Token<TContainer, T> = TokenConstructor<TContainer, T> | TokenFactory<TContainer, T>
 export type RegisterToken<TContainer, T> = Token<TContainer, T> | InstantiableConstructor<TContainer, T>
 export type RegisterTokens<TContainer extends Record<string, any>, PContainer extends Record<string, any>> = {
-    [K in keyof TContainer]: RegisterToken<KnownMappedKeys<Omit<Merge<TContainer, PContainer>, K>>, TContainer[K]>
+    [K in keyof TContainer]: Merge<TContainer, PContainer> extends infer U
+    ? RegisterToken<
+        HasIndexSignature<U> extends true
+        ? TContainer extends never ? PContainer : Pretty<Record<string, any> & Omit<KnownMappedKeys<U>, K>>
+        : Pretty<Omit<KnownMappedKeys<U>, K>>,
+        TContainer[K]
+    >
+    : never
 }
 
 // infer
@@ -34,7 +41,7 @@ export type InferContainer<T extends AnyHollywood> = T extends Hollywood<infer T
     : never
 
 // resolver
-export type Resolver<T extends Record<string, any>> = (keyof T & string) | InstantiableConstructor<T, any> | InitFactory<T, any>
+export type Resolver<T extends Record<string, any>> = (keyof KnownMappedKeys<T> & string) | InstantiableConstructor<T, any> | InitFactory<T, any>
 type InferInstanceFromResolver<T extends Record<string, any>, R extends Resolver<T>> = R extends InstantiableConstructor<infer _, infer T>
     ? T
     : R extends InitFactory<infer _, infer T>
@@ -102,7 +109,7 @@ export class Hollywood<
 
         // eagerly store token instances by resolving them once
         for (const [name, token] of this.tokenStore.entries()) {
-            if (token.scope !== "transient" && !(token.lazy ?? this.options?.lazy)) this.resolve(name)
+            if (token.scope !== "transient" && !(token.lazy ?? this.options?.lazy)) this.resolve(name as Resolver<Merge<T, P>>)
         }
     }
 
