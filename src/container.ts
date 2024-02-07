@@ -39,6 +39,9 @@ export type RegisterTokens<TContainer extends Record<string, any>, PContainer ex
 export type InferContainer<T extends AnyHollywood> = T extends Hollywood<infer TContainer, infer PContainer>
     ? Merge<TContainer, PContainer>
     : never
+export type InferTokens<T extends Record<string, RegisterToken<any, any>>> = {
+    [K in keyof T]: T[K] extends RegisterToken<any, infer T> ? T : never
+}
 
 // resolver
 export type Resolver<T extends Record<string, any>> = (keyof KnownMappedKeys<T> & string) | InstantiableConstructor<T, any> | InitFactory<T, any>
