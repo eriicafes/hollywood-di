@@ -260,7 +260,7 @@ const container Hollywood.create({
 
     // singleton
     exampleSingleton: singleton(Instance),
-    exampleSingletonFactory: scoped(() => new Instance()),
+    exampleSingletonFactory: singletonFactory(() => new Instance()),
 
     // transient
     exampleTransient: transient(Instance),
