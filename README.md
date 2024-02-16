@@ -72,7 +72,7 @@ const container = Hollywood.create(
 );
 
 // this container is lazy, as inherited from its parent
-const childContainer = Hollywood.create({
+const childContainer = Hollywood.createWithParent(container, {
   // ...register tokens
 });
 ```
@@ -250,21 +250,32 @@ type Scope = "singleton" | "scoped" | "transient";
 - `Transient`: a new instance is created everytime.
 
 ```ts
+import {
+  factory,
+  Hollywood,
+  scoped,
+  scopedFactory,
+  singleton,
+  singletonFactory,
+  transient,
+  transientFactory,
+} from "hollywood-di";
+
 class Instance {}
 
-const container Hollywood.create({
-    // scoped
-    example: Instance, // scoped by default ie same as scoped(Instance)
-    exampleScoped: scoped(Instance),
-    exampleScopedFactory: scopedFactory(() => new Instance()),
+const container = Hollywood.create({
+  // scoped
+  example: Instance, // scoped by default ie same as scoped(...)
+  exampleScopedFactory: factory(() => new Instance()), // scoped by default ie same as scopedFactory(...)
+  exampleScoped: scoped(Instance),
+  exampleScopedFactory: scopedFactory(() => new Instance()),
 
-    // singleton
-    exampleSingleton: singleton(Instance),
-    exampleSingletonFactory: scoped(() => new Instance()),
+  // singleton
+  exampleSingleton: singleton(Instance),
+  exampleSingletonFactory: singletonFactory(() => new Instance()),
 
-    // transient
-    exampleTransient: transient(Instance),
-    exampleTransientfactory: transientFactory(() => new Instance()),
-
-})
+  // transient
+  exampleTransient: transient(Instance),
+  exampleTransientfactory: transientFactory(() => new Instance()),
+});
 ```

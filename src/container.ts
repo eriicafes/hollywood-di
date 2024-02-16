@@ -3,7 +3,7 @@ import { scoped } from "./helpers"
 import { HasIndexSignature, KnownMappedKeys, Merge, Pretty } from "./types"
 
 // initializers
-export type InitFactory<TContainer, T> = { init(container: TContainer): T }
+export type InitFactory<TContainer, T> = { init: (container: TContainer) => T }
 type EmptyConstructor<T> = new () => T
 type InitConstructor<TContainer, T> = (new (...args: any[]) => T) & InitFactory<TContainer, T>
 export type InstantiableConstructor<TContainer, T> = InitConstructor<TContainer, T> | EmptyConstructor<T>
