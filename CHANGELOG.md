@@ -1,5 +1,11 @@
 # hollywood-di
 
+## 0.5.2
+
+### Patch Changes
+
+- 796e313: Use property syntax over method syntax for InitFactory type
+
 ## 0.5.1
 
 ### Patch Changes
