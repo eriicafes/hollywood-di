@@ -2,7 +2,7 @@
 
 📦 Typesafe Dependency Injection for typescript with zero decorators.
 
-Hollywood is desgined to be simple. A class / factory function determines its dependencies and it can only be resolved by a container if that container holds all it's required dependencies.
+Hollywood is designed to be simple. A class / factory function determines its dependencies and it can only be resolved by a container if that container holds all it's required dependencies.
 
 As long as this requirement is met, the container will take control of creating the instance. Dependencies are statically checked with typescript at compile time.
 
@@ -81,23 +81,9 @@ const childContainer = Hollywood.createWithParent(container, {
 
 ### Registration
 
-Tokens are registered on a container after which they can be resolved using their name, class constructor or factory function.
+Tokens are registered on a container after which they can be resolved using their name, class constructor or factory.
 
-NOTE: When resolving a class constructor or factory function, the container will only return an existing instance if it was directly registered on the container, otherwise a new instance will be created and returned. Resolving by name does not share this behaviour.
-
-Example using a factory:
-
-```ts
-const userFactory = factory(() => ({ role: "user" }));
-
-const container = Hollywood.create({
-  user: userFactory,
-});
-
-const user1 = container.resolve("user");
-const user2 = container.resolve(userFactory);
-// user1 === user2
-```
+NOTE: When resolving a class constructor or factory, the container will only return an existing instance if it was directly registered on that container, otherwise a new instance will be created and returned. Resolving by name does not share this behaviour.
 
 Example using a class:
 
@@ -113,7 +99,21 @@ const car2 = container.resolve(Car);
 // car1 === car2
 ```
 
-A class can only be used as a token if it has exactly zero constructor parameters or a static init function that returns an instance of the class.
+Example using a factory:
+
+```ts
+const userFactory = factory(() => ({ role: "user" }));
+
+const container = Hollywood.create({
+  user: userFactory,
+});
+
+const user1 = container.resolve("user");
+const user2 = container.resolve(userFactory.target);
+// user1 === user2
+```
+
+A class can only be used as a token if it has exactly zero constructor parameters, a single constructor parameter that satisfies the container or a static init method that satisfies the container. The init method is prioritized if it exists.
 
 ```ts
 class Car {}
@@ -123,16 +123,22 @@ class Color {
 }
 
 class Person {
+  constructor(public container: { car: Car }) {}
+}
+
+class Property {
+  constructor(public car: Car) {}
+
   public static init(container: { car: Car }) {
     return new Person(container.car);
   }
-  constructor(public car: Car) {}
 }
 
 const container = Hollywood.create({
   car: Car, // valid ✅
   color: Color, // invalid ❌
   person: Person, // valid ✅
+  property: Property, // valid ✅
 });
 ```
 
@@ -150,15 +156,11 @@ class Waiter {
 }
 
 class Restaurant {
-  public static init(container: { chef: Chef; waiter: Waiter }) {
-    return new Restaurant(container.chef, container.waiter);
-  }
-
-  constructor(private chef: Chef, private waiter: Waiter) {}
+  constructor(private ctx: { chef: Chef; waiter: Waiter }) {}
 
   public orderMeal(meal: string) {
-    this.chef.cook(meal);
-    this.waiter.serve(meal);
+    this.ctx.chef.cook(meal);
+    this.ctx.waiter.serve(meal);
   }
 }
 
@@ -173,26 +175,6 @@ restaurant.orderMeal("🍜");
 ```
 
 In the example above, the container automatically injects the chef and waiter to the restaurant.
-
-### Define Init (class helper)
-
-In the previous example, the restaurant initializer can be simplified as below:
-
-```ts
-import { defineInit } from "hollywood-di";
-
-// other code here
-
-class Restaurant {
-  public static init = defineInit(Restaurant).args("chef", "waiter");
-
-  constructor(private chef: Chef, private waiter: Waiter) {}
-
-  // other methods here
-}
-```
-
-this is a shorthand for specifying the name of the token in the container which will hold the value for each argument in the class constructor.
 
 ### Lazy Tokens
 
@@ -220,16 +202,16 @@ NOTE: when resolving a token, all dependencies of the token will also be resolve
 
 ### Init Hooks
 
-Registered tokens can have init hooks that are called before and after an instance of that token is created.
+Registered tokens can have init hooks that are called before and after an instance of the token is created.
 
 ```ts
 const container = Hollywood.create({
   example: factory(() => "hello world", {
     beforeInit() {
-      console.log("before example init");
+      console.log("before init");
     },
     afterInit(instance) {
-      console.log(instance); // instance === "hello world"
+      console.log("after init", instance);
     },
   }),
 });
@@ -238,10 +220,6 @@ const container = Hollywood.create({
 ### Scope
 
 Tokens registered in containers can have one of three scopes:
-
-```ts
-type Scope = "singleton" | "scoped" | "transient";
-```
 
 - `Scoped`: the same instance is shared in each container.
 
