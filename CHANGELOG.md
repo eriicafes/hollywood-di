@@ -1,5 +1,11 @@
 # hollywood-di
 
+## 0.6.1
+
+### Patch Changes
+
+- 18a28d3: Expose types
+
 ## 0.6.0
 
 ### Minor Changes
