@@ -1,5 +1,12 @@
 # hollywood-di
 
+## 0.6.0
+
+### Minor Changes
+
+- e3e944e: Use constructor argument for class alongside static init method
+- e3e944e: Hide unnecessary types (InferTokens, RegisterTokens, etc)
+
 ## 0.5.2
 
 ### Patch Changes
