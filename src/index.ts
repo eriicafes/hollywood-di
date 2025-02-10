@@ -1,10 +1,12 @@
 export {
   AnyHollywood,
   Constructor,
+  ContainerOptions,
   Factory,
   Hollywood,
   HollywoodOf,
   InferContainer,
+  RegisterTokens,
   Target,
   Token,
 } from "./container";

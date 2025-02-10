@@ -8,7 +8,7 @@ export type Target<T, TContainer> =
   | Factory<T, TContainer>;
 
 type Scope = "singleton" | "scoped" | "transient";
-type ContainerOptions = {
+export type ContainerOptions = {
   lazy?: boolean;
 };
 
@@ -21,7 +21,7 @@ export type Token<T, TContainer> = {
 type RegisterToken<T, TContainer> =
   | Token<T, TContainer>
   | Target<T, TContainer>;
-type RegisterTokens<
+export type RegisterTokens<
   TContainer extends Record<string, any>,
   PContainer extends Record<string, any>
 > = {
